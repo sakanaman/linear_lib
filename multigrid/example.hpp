@@ -36,36 +36,37 @@ void poisson_example(int maxlevel, int coasest_power, int finest_power,
         {
             for(int iy = 1; iy <= dim; ++iy)
             {
-                int index_coef = (ix - 1) * dim + (iy - 1);
+                int index = ix * (dim + 2) + iy;
                 double h = L/(dim + 1);
                 double x = h * ix;
                 double y = h * iy;
 
-                a[level][index_coef] = -4.0/(h*h); // center
-                b[level][index_coef] = 1.0/(h*h); // right
-                c[level][index_coef] = 1.0/(h*h); // left
-                d[level][index_coef] = 1.0/(h*h); // up
-                e[level][index_coef] = 1.0/(h*h); // down
-                right[level][index_coef] = rhs_poisson(x,y);
+                a[level][index] = -4.0/(h*h); // center
+                b[level][index] = 1.0/(h*h); // right
+                c[level][index] = 1.0/(h*h); // left
+                d[level][index] = 1.0/(h*h); // up
+                e[level][index] = 1.0/(h*h); // down
+                right[level][index] = rhs_poisson(x,y);
                 
                 if(ix == 1)
                 {
-                    right[level][index_coef] -= c[level][index_coef] * boundary_poisson(0,y);
-                    c[level][index_coef] = 0.0;
+                    right[level][index] -= c[level][index] * boundary_poisson(0,y);
+                    c[level][index] = 0.0;
                 }
                 if(iy == 1)
                 {
-                    right[level][index_coef] -= e[level][index_coef] * boundary_poisson(x,0);
-                    e[level][index_coef] = 0.0;
+                    right[level][index] -= e[level][index] * boundary_poisson(x,0);
+                    e[level][index] = 0.0;
                 }
                 if(ix == dim)
                 {
-                    right[level][index_coef] -= b[level][index_coef] * boundary_poisson(L,y);
-                    b[level][index_coef] = 0.0;
+                    right[level][index] -= b[level][index] * boundary_poisson(L,y);
+                    b[level][index] = 0.0;
                 }
                 if(iy == dim)
                 {
-                    right[level][index_coef] -= d[level][index_coef] * boundary_poisson(x,L);
+                    right[level][index] -= d[level][index] * boundary_poisson(x,L);
+                    d[level][index] = 0.0;
                 }
             }
         }
