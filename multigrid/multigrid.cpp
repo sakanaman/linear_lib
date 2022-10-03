@@ -7,6 +7,7 @@
 // Assumption
 //  - Dimention = 2^N
 //  - Square domain
+//  - dirichlet condition
 //  - V-cycle multi-grid
 //  - Gauss-Seidel Method for smoother
 
@@ -17,80 +18,73 @@
 #include <string>
 #include "example.hpp"
 
-double eps = 1e-10;
+double eps = 1e-6;
+const int gauss_iter = 2;
 
-const double L = 10.0; // the size of domain is L x L
-const int finest_power = 9;
-const int coarsest_power = 4;
-const int maxlevel =  finest_power - coarsest_power; // level = 0,1,...,maxlevel
+const double L = 2.0; // the size of domain is L x L
+const int coarsest_dim = 2; // the number of observing point in the domain
+const int maxlevel =  9; // level = 0,1,...,maxlevel (fine -> coarse)
+const int finest_dim = std::pow(2, maxlevel) * coarsest_dim + std::pow(2, maxlevel) - 1;
 // coefficients for each level
-std::vector<std::vector<double>> a(maxlevel+1),b(maxlevel+1),c(maxlevel+1),
+std::vector<std::vector<std::vector<double>>> a(maxlevel+1),b(maxlevel+1),c(maxlevel+1),
                                  d(maxlevel+1),e(maxlevel+1),right(maxlevel+1);
                                 
 // solutions for each level
-std::vector<std::vector<double>> u(maxlevel+1);
+std::vector<std::vector<std::vector<double>>> u(maxlevel+1);
 
 // residuals for each level
-std::vector<std::vector<double>> residual(maxlevel+1);
+std::vector<std::vector<std::vector<double>>> residual(maxlevel+1);
 
 // numbers for modifying solution
-std::vector<std::vector<double>> delta_u(maxlevel + 1);
+std::vector<std::vector<std::vector<double>>> delta_u(maxlevel + 1);
 
 
 void set_initial()
 {
     std::cout << "[SEQUENCE]: allocate" << std::endl;
     // allocation
-    int dim = std::pow(2, finest_power);
-    for(int power = finest_power; power >= coarsest_power; --power)
+    int dim = coarsest_dim;
+    for(int level = maxlevel; level >= 0; --level)
     {
         printf("%d x %d\n", dim, dim);
-        int level = finest_power - power;
-        int dim2D_pad = (dim + 2)*(dim + 2); // 4*dim + 4 is needed for boundary
-        a[level].resize(dim2D_pad, 0.0);
-        b[level].resize(dim2D_pad, 0.0);
-        c[level].resize(dim2D_pad, 0.0);
-        d[level].resize(dim2D_pad, 0.0);
-        e[level].resize(dim2D_pad, 0.0);
-        right[level].resize(dim2D_pad, 0.0);
-        delta_u[level].resize(dim2D_pad, 0.0);
+        // int dim2D_pad = (dim + 2)*(dim + 2); // 4*dim + 4 is needed for boundary
+        // coeficients
+        a[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        b[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        c[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        d[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        e[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        // variants for calculation
+        right[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        delta_u[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        residual[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
+        u[level].resize(dim + 2, std::vector<double>(dim + 2, 0.0));
 
-        // Note that these variants have different index!!
-        residual[level].resize(dim2D_pad, 0.0);
-        u[level].resize(dim2D_pad, 0.0);
-
-        dim /= 2;
+        dim = 2 * dim + 1;
     }
 
     std::cout << "[SEQUENCE]: set coefficients" << std::endl;
     // set coefficients
-    poisson_example(maxlevel, coarsest_power, finest_power, L,
-                    a, b, c, d, e, right);
+    poisson_example(maxlevel, coarsest_dim, L, a, b, c, d, e, right);
 }
 
 // FUTURE: multi-color(RED-BLACK)
 void gauss_seidel(int level, int dim)
 {
     // a loop of gauss-seidel
-    for(int iter = 0; iter < 10; ++iter)
+    for(int iter = 0; iter < gauss_iter; ++iter)
     {
         for(int ix = 1; ix <= dim; ++ix)
         {
             for(int iy = 1; iy <= dim; ++iy)
             {
-                int index = ix * (dim + 2) + iy;
-                int index_up = index + 1;
-                int index_down = index - 1;
-                int index_right = index + (dim + 2);
-                int index_left = index - (dim + 2);
-
-                u[level][index] = 1.0/a[level][index] 
+                u[level][ix][iy] = 1.0/a[level][ix][iy]
                                     * (
-                                        right[level][index]
-                                        - b[level][index]*u[level][index_right]
-                                        - c[level][index]*u[level][index_left]
-                                        - d[level][index]*u[level][index_up]
-                                        - e[level][index]*u[level][index_down]
+                                        right[level][ix][iy]
+                                        - b[level][ix][iy]*u[level][ix+1][iy]
+                                        - c[level][ix][iy]*u[level][ix-1][iy]
+                                        - d[level][ix][iy]*u[level][ix][iy+1]
+                                        - e[level][ix][iy]*u[level][ix][iy-1]
                                     );
             }
         }
@@ -101,80 +95,60 @@ void gauss_seidel(int level, int dim)
     {
         for(int iy = 1; iy <= dim; ++iy)
         {
-            int index = ix * (dim + 2) + iy;
-            int index_up = index + 1;
-            int index_down = index - 1;
-            int index_right = index + (dim + 2);
-            int index_left = index - (dim + 2);
-
-            residual[level][index] = right[level][index]
-                                        - a[level][index]*u[level][index]  
-                                        - b[level][index]*u[level][index_right]
-                                        - c[level][index]*u[level][index_left]
-                                        - d[level][index]*u[level][index_up]
-                                        - e[level][index]*u[level][index_down];
+            residual[level][ix][iy] = right[level][ix][iy]
+                                    - a[level][ix][iy] * u[level][ix][iy]
+                                    - b[level][ix][iy] * u[level][ix+1][iy]
+                                    - c[level][ix][iy] * u[level][ix-1][iy]
+                                    - d[level][ix][iy] * u[level][ix][iy+1]
+                                    - e[level][ix][iy] * u[level][ix][iy-1];
         }
     }
 }
 
+// 2^n * h -> 2^(n+1) h
 void interp_restrict(int level, int dim)
 {
-    int next_dim = dim/2;
+    int next_dim = (dim - 1)/2;
 
     for(int ix = 1; ix <= next_dim; ++ix)    
     {
         for(int iy = 1; iy <= next_dim; ++iy)
         {
-            int index_coarse = ix * (next_dim + 2) + iy;
-
-            int index_fine = 2 * ix * (dim + 2) + 2 * iy;
-            int index_right = index_fine + (dim + 2);
-            int index_left = index_fine - (dim + 2);
-            int index_up = index_fine + 1;
-            int index_down = index_fine - 1;
-
-            right[level+1][index_coarse] = 0.125 * (residual[level][index_right] 
-                                                 +  residual[level][index_left]
-                                                 +  residual[level][index_up]
-                                                 +  residual[level][index_down])
-                                           + 0.5 *  residual[level][index_fine];
+            right[level+1][ix][iy] = 0.125 *   (   residual[level][2*ix+1][2*iy]
+                                                +  residual[level][2*ix-1][2*iy]
+                                                +  residual[level][2*ix][2*iy+1]
+                                                +  residual[level][2*ix][2*iy-1])
+                                   + 0.25  *       residual[level][2*ix][2*iy]
+                                   + 0.0625*   ( residual[level][2*ix+1][2*iy+1]
+                                                +residual[level][2*ix-1][2*iy+1]
+                                                +residual[level][2*ix+1][2*iy-1]
+                                                +residual[level][2*ix-1][2*iy-1]);
         }
     }
 }
 
+// 2^(n+1) * h -> 2^n * h
 void interp_prolong(const int level, const int dim)
 {
-    int next_dim = dim * 2;
-    for(int ix = 1; ix <= dim; ++ix)
+    for(int ix = 0; ix <= dim; ++ix)
     {
-        for(int iy = 1; iy <= dim; ++iy)        
+        for(int iy = 0; iy <= dim; ++iy)        
         {
-            int index_fine = 2*ix * (next_dim + 2) + 2*iy;
-            int index_fine_right = index_fine + (next_dim + 2);
-            int index_fine_up = index_fine + 1;
-            int index_fine_rightup = index_fine + (next_dim + 2) + 1;
-
-            int index_coarse = ix * (dim + 2) + iy;
-            int index_coarse_right = index_coarse + (dim + 2);
-            int index_coarse_up = index_coarse + 1;
-            int index_coarse_rightup = index_coarse + (dim + 2) + 1;
-            
-            delta_u[level-1][index_fine] = u[level][index_coarse];
-            delta_u[level-1][index_fine_right] = 0.5 * (u[level][index_coarse] + u[level][index_coarse_right]);
-            delta_u[level-1][index_fine_up] = 0.5 * (u[level][index_coarse] + u[level][index_coarse_up]);
-            delta_u[level-1][index_fine_rightup] = 0.25 * (u[level][index_coarse] + u[level][index_coarse_right] 
-                                                          +u[level][index_coarse_up] + u[level][index_coarse_rightup]);
+            delta_u[level-1][2*ix][2*iy] = u[level][ix][iy];
+            delta_u[level-1][2*ix][2*iy+1] = 0.5 * (u[level][ix][iy] + u[level][ix][iy+1]);
+            delta_u[level-1][2*ix+1][2*iy] = 0.5 * (u[level][ix+1][iy] + u[level][ix][iy]);
+            delta_u[level-1][2*ix+1][2*iy+1] = 0.25 * ( u[level][ix][iy] + u[level][ix+1][iy]
+                                                      + u[level][ix][iy+1] + u[level][ix+1][iy+1]);
         }
     }
 
 
+    int next_dim = 2*dim + 1;
     for(int ix = 1; ix <= next_dim; ++ix)
     {
         for(int iy = 1; iy <= next_dim; ++iy)        
         {
-            int index_fine = ix * (next_dim + 2) + iy;
-
-            u[level-1][index_fine] += delta_u[level-1][index_fine];
+            u[level-1][ix][iy] += delta_u[level-1][ix][iy];
         }
     }
 }
@@ -182,26 +156,18 @@ void interp_prolong(const int level, const int dim)
 double calculate_error()
 {
     double sum_error = 0.0;
-    int dim = std::pow(2, finest_power);
-    int level = 0;
 
     // calculate residual
-    for(int ix = 1; ix <= dim; ++ix)
+    for(int ix = 1; ix <= finest_dim; ++ix)
     {
-        for(int iy = 1; iy <= dim; ++iy)
+        for(int iy = 1; iy <= finest_dim; ++iy)
         {
-            int index = ix * (dim + 2) + iy;
-            int index_up = index + 1;
-            int index_down = index - 1;
-            int index_right = index + (dim + 2);
-            int index_left = index - (dim + 2);
-
-            double error = right[level][index]
-                            - a[level][index]*u[level][index]  
-                            - b[level][index]*u[level][index_right]
-                            - c[level][index]*u[level][index_left]
-                            - d[level][index]*u[level][index_up]
-                            - e[level][index]*u[level][index_down];
+            double error = right[0][ix][iy]
+                            - a[0][ix][iy]*u[0][ix][iy]  
+                            - b[0][ix][iy]*u[0][ix+1][iy]
+                            - c[0][ix][iy]*u[0][ix-1][iy]
+                            - d[0][ix][iy]*u[0][ix][iy+1]
+                            - e[0][ix][iy]*u[0][ix][iy-1];
             sum_error += error * error;
         }
     }
@@ -211,12 +177,45 @@ double calculate_error()
 
 void output_progress(int iter, double error)
 {
-    std::string sentense;
-    sentense += "\riter: ";
-    sentense += std::to_string(iter);
-    sentense += ", error: ";
-    sentense += std::to_string(error);
-    std::printf("%s", sentense.c_str());
+    std::printf("\riter: %d, error:%15.11f", iter, error);
+}
+
+void fill_zero(int begin_level, int end_level, std::vector<std::vector<std::vector<double>>>& ary)
+{
+    for(int level = begin_level; level <= end_level; ++level)        
+    {
+        for(auto& column : ary[level])
+        {
+            for(auto& factor : column)
+            {
+                factor = 0.0;
+            }
+        }
+    }
+}
+
+void show_array(const std::vector<std::vector<std::vector<double>>>& ary)
+{
+    std::cout << "============================"<<  std::endl;
+    for(const auto& level_matrix : ary)
+    {
+        for(const auto& columns : level_matrix)
+        {
+            for(const auto& factor : columns)
+            {
+                std::printf("%f,", factor);
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "============================"<<  std::endl;
+}
+
+void debug_report()
+{
+    show_array(delta_u);
+    std::exit(1);
 }
 
 void calculate()
@@ -225,25 +224,26 @@ void calculate()
     for(int iter = 1;;++iter)
     {
         // restriction
-        int dim = std::pow(2, finest_power);
+        int dim = finest_dim;
         gauss_seidel(0, dim);
         interp_restrict(0, dim);
-        dim = dim/2;
+        dim = (dim - 1)/2;
         for(int level = 1; level <= maxlevel-1; ++level)
         {
-            std::fill(u[level].begin(), u[level].end(), 0.0);
             gauss_seidel(level, dim);
             interp_restrict(level, dim);
-            dim = dim/2;
+            dim = (dim - 1)/2;
         }
         gauss_seidel(maxlevel, dim); // now, dim = 2^(coarsest_power)
-        
+
         // prolongation
-        for(int level = maxlevel; level >= 1; --level)
+        for(int level = maxlevel; level >= 2; --level)
         {
             interp_prolong(level, dim);
-            dim *= 2;
+            gauss_seidel(level-1, dim*2);
+            dim = 2 * dim + 1;
         }
+        interp_prolong(1, dim);
 
         double error = calculate_error();
         if(error < eps)
@@ -253,6 +253,12 @@ void calculate()
         }
 
         output_progress(iter, error);
+        
+        // fill zero for u, delta,..and so on.
+        fill_zero(1, maxlevel, u);
+        fill_zero(1, maxlevel, right);
+        fill_zero(0, maxlevel, delta_u);
+        fill_zero(0, maxlevel, residual);
     }
 }
 
