@@ -5,7 +5,7 @@
 //                  + d_{ix,iy,k}*u_{ix,iy+1} + e_{ix,iy,k}*u_{ix,iy-1,k} = right{ix,iy,k}
 //
 // Assumption
-//  - Dimention = 2^N
+//  - Dimention = 2^(max_level) * coasest_dimention + 2^(max_level) - 1
 //  - Square domain
 //  - dirichlet condition
 //  - V-cycle multi-grid
@@ -19,7 +19,7 @@
 #include "example.hpp"
 
 double eps = 1e-6;
-const int gauss_iter = 2;
+const int gauss_iter = 1;
 
 const double L = 2.0; // the size of domain is L x L
 const int coarsest_dim = 2; // the number of observing point in the domain
@@ -240,7 +240,7 @@ void calculate()
         for(int level = maxlevel; level >= 2; --level)
         {
             interp_prolong(level, dim);
-            gauss_seidel(level-1, dim*2);
+            gauss_seidel(level-1, 2*dim+1);
             dim = 2 * dim + 1;
         }
         interp_prolong(1, dim);
@@ -254,11 +254,8 @@ void calculate()
 
         output_progress(iter, error);
         
-        // fill zero for u, delta,..and so on.
+        // fill zero for u
         fill_zero(1, maxlevel, u);
-        fill_zero(1, maxlevel, right);
-        fill_zero(0, maxlevel, delta_u);
-        fill_zero(0, maxlevel, residual);
     }
 }
 
